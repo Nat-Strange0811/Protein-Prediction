@@ -1,0 +1,7 @@
+{
+    "python.defaultInterpreterPath": "/data/home/qp252414/.conda/envs/protein_prediction/bin/python",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+
+    "ruff.enable": true
+}

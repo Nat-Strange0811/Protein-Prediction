@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fusion-model"
+version = "0.1.0"
+
+[tool.setuptools.packages.find]
+where = [
+    "03-Embedding_Extraction",
+    "04-Dataset",
+    "05-Fusion_Layer",
+    "06-MLP_Classifier",
+    "07-Fusion_Model",
+    "08-Trainer",
+    "10-Configs"
+]

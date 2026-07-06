@@ -1,0 +1,6 @@
+extractor_type: esm
+model: esmc-300m-2024-12 #or esmc-600m-2024-12
+embedding_loc: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Embeddings/esmc_300m.pt'
+device: cuda
+max_retries: 3
+backoff_factor: 0.5

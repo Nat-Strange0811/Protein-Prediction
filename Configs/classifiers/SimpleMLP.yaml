@@ -1,0 +1,5 @@
+model: SimpleMLP
+dropout_rate: 0.1
+activation_function: relu
+hidden_dims: [128, 64]
+device: cuda

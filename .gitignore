@@ -1,0 +1,5 @@
+Logs/
+Environment/
+Data/
+.log
+*.egg-info/

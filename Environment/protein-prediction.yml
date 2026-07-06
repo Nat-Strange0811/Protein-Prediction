@@ -1,6 +1,22 @@
 name: protein_prediction
 channels:
   - conda-forge
+  - pytorch
 dependencies:
   - python=3.10
   - polars
+  - pandas
+  - pytorch
+  - numpy
+  - requests
+  - pyarrow
+  - pyyaml
+  - pydantic
+  - python-dotenv
+  - scikit-learn
+  - httpx
+  - pip
+  - pip:
+    - esm
+    - transformers
+    - -e ../Code/
