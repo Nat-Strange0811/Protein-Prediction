@@ -12,4 +12,4 @@ echo "Starting Job: $SLURM_JOB_NAME with Job ID: $SLURM_JOB_ID"
 module load miniforge
 mamba activate protein_prediction
 
-python Code/02-Data_Prep/data_prep.py
+python Code/02-Data_Prep/data_prep/data_prep.py

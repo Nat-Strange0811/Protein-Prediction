@@ -71,9 +71,9 @@ def main():
     mapping = uniprot_lookup(list(ids))
     mapping = covered_PINNACLE(mapping)
     
-    seer = query(seer, mapping)
-    olink = query(olink, mapping)
-    soma = query(soma, mapping)
+    seer = query(seer, mapping, "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST1_Seer_Cleaned.parquet")
+    olink = query(olink, mapping, "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST2_Olink_Cleaned.parquet")
+    soma = query(soma, mapping, "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST3_Soma_Cleaned.parquet")
     
     seer_soma = seer.join(soma, on="Uni_Prot_ID", how="inner").select(pl.col("Uni_Prot_ID"), pl.col("Seer_ID"), pl.col("Soma_ID"))
     seer_olink = seer.join(olink, on="Uni_Prot_ID", how="inner").select(pl.col("Uni_Prot_ID"), pl.col("Seer_ID"), pl.col("Olink_ID"))
@@ -266,7 +266,7 @@ def main():
     print(f"Seer + Olink + Soma: {all_technologies_poorly_covered_count} : {all_technologies_count}")
     
     
-def query(df: pl.DataFrame, mapping: dict) -> pl.DataFrame:
+def query(df: pl.DataFrame, mapping: dict, save_file: str) -> pl.DataFrame:
     
     df = df.with_columns(
         pl.Series("gene_name", [mapping.get(uniprot_id, {}).get("gene_name") for uniprot_id in df["Uni_Prot_ID"]]),
@@ -275,6 +275,7 @@ def query(df: pl.DataFrame, mapping: dict) -> pl.DataFrame:
         pl.Series("capable_for_NN_integration", [(mapping.get(uniprot_id, {}).get("length") or 0) <= 1024 and mapping.get(uniprot_id, {}).get("covered_PINNACLE") for uniprot_id in df["Uni_Prot_ID"]])
     )
     
+    df.write_parquet(save_file)
     
     return df
     

@@ -2,8 +2,6 @@
 #SBATCH --job-name=Protein_Prediction
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
 #SBATCH --output=Logs/Train/%x.%j.log
 
 cd /data/PHURI-Langenberg/people/Nat/Protein-Prediction/

@@ -8,6 +8,7 @@ version = "0.1.0"
 
 [tool.setuptools.packages.find]
 where = [
+    "02-Data_Prep",
     "03-Embedding_Extraction",
     "04-Dataset",
     "05-Fusion_Layer",

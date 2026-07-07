@@ -139,6 +139,25 @@ class ESMExtractor(EmbeddingExtractor):
         #We then call the method to embed the sequence using the Forge API, passing the UniProt ID as a label for logging purposes.
         return self._embed_sequence(sequence, label=uniprot_id)
     
+    def filter(self, df):
+        """
+        Method - filter:
+        
+        Filters a DataFrame of protein sequences to retain only those that are compatible with the ESM-C model for embedding extraction.
+        
+        Args:
+        - df: A pandas DataFrame containing protein sequences and associated metadata, including a "sequence" column with amino acid sequences.
+        
+        Returns:
+        - A filtered pandas DataFrame containing only the rows with sequences that are compatible with the ESM-C model (i.e., sequences of length <= 2048 amino acids).
+        """
+        
+        df = df[df["length"] <= 2048]
+        
+        return df
+        
+        
+    
     def _embed_sequence(self, sequence: str, label: str) -> Tensor:
         """
         Method - _embed_sequence:

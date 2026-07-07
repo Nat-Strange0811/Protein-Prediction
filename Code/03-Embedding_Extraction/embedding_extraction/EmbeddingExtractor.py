@@ -15,6 +15,8 @@ from urllib3.util.retry import Retry
 import torch
 from torch import Tensor
 
+import pandas as pd
+
 #Module logger - inheriting classes share this unless otherwise defined.
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,18 @@ class EmbeddingExtractor(ABC):
         - KeyError: If the UniProt ID is not found in a precomputed embedding store (e.g. PINNACLE).
         """
         ...
+        
+    @abstractmethod
+    def filter(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Method - Filter:
+        
+        Args:
+        - df: A pandas DataFrame containing protein data that needs to be filtered based on the extractor's compatibility.
+        
+        Returns:
+        - A pandas DataFrame containing only the rows that are compatible with the extractor's requirements.
+        """
     
     def save(self, embeddings: Tensor, uniprot_ids: list[str], output_path: str):
         """

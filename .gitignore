@@ -3,3 +3,4 @@ Environment/
 Data/
 .log
 *.egg-info/
+*.env

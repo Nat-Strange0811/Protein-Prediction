@@ -5,6 +5,7 @@ from fusion_layer import ConcatenationFusion
 from mlp_classifier import SimpleMLP
 from fusion_model import FusionModel
 from trainer import Trainer
+from data_prep import prepare_data
 
 from dotenv import load_dotenv
 from pathlib import Path
@@ -122,25 +123,39 @@ def load_classifier(config, input_dim):
 
 def main():
     
+    print("Extracting arguments")
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True, help='Path to config YAML file')
     args = parser.parse_args()
     config_path = args.config
     
+    print(f"Loading configuration from {config_path}")
     config = load_config(config_path, "config")
     
+    print(f"Running data preparation")
+    prepare_data([load_config(path, "extractor") for path in config.model.modalities.values()], config.paths.raw_csv)
+    
+    print("Loading dataset")
     dataset, embedding_dims = load_dataset(config)
+    print("Loading fusion layer")
     fusionLayer = load_fusion_layer(config)
     
     fusionLayer_output_dim = fusionLayer.output_dim()
     
+    print("Loading classifier")
     classifier = load_classifier(config, fusionLayer_output_dim)
+    print("Loading fusion model")
     fusion_model = FusionModel(embedding_dims, config.model.d_model, fusionLayer, classifier)
     
+    print("Initializing trainer")
     trainer = Trainer(fusion_model, dataset, config)
+    print("Starting training")
     trainer.train(config.training.epochs)
+    print("Evaluating best model on test set")
     trainer.evaluate()
     
+if __name__ == "__main__":
+    main()
     
     
     
