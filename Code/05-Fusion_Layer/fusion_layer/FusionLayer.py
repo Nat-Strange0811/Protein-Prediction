@@ -1,8 +1,8 @@
 # PyTorch
-import torch
-
 # Abstract Base Class
 from abc import ABC, abstractmethod
+
+import torch
 
 '''
 Class - FusionLayer:
@@ -22,10 +22,10 @@ Methods:
 '''
 class FusionLayer(torch.nn.Module, ABC):
     
-    def __init__(self, device=None):
+    def __init__(self):
         # Call the constructor of the parent class (torch.nn.Module) to initialize the module
         super().__init__()
-        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     @abstractmethod
     def forward(self, embeddings: list[torch.Tensor]) -> torch.Tensor:

@@ -1,1 +1,1 @@
-from .configs import Config, ExtractorConfig, ClassifierConfig, FusionLayerConfig
+from .configs import ClassifierConfig, Config, ExtractorConfig, FusionLayerConfig

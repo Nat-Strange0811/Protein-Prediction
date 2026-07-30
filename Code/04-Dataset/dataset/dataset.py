@@ -1,10 +1,9 @@
 #PyTorch imports
-import torch
-from torch.utils.data import Dataset
-
 #Path and typing imports
 from pathlib import Path
-from typing import List, Dict
+
+import torch
+from torch.utils.data import Dataset
 
 '''
 Class - ProteinDataset:
@@ -34,7 +33,7 @@ class ProteinDataset(Dataset):
     for each modality are aligned with the protein IDs in the labels file and each other.
     
     Inputs:
-    - embedding_dir (str): Directory containing the embeddings for each modality.
+    - embedding_dirs (List[str]): List of directories containing the embeddings for each modality.
     - modalities (List[str]): List of modality names to be loaded.
     - labels_path (str): Path to the file containing the labels.
     
@@ -45,7 +44,7 @@ class ProteinDataset(Dataset):
     Returns:
     - None
     '''
-    def __init__(self, embedding_dirs: List[str], modalities: List[str], labels_path: str):
+    def __init__(self, embedding_dirs: list[str], modalities: list[str], labels_path: str):
         # Initialize the dataset by loading embeddings and labels
         self.embedding_dirs = [Path(dir) for dir in embedding_dirs]
         self.modalities = modalities
@@ -55,40 +54,43 @@ class ProteinDataset(Dataset):
         
         # Load labels
         label_data = torch.load(labels_path, weights_only=True)
+        self.prot_ids = label_data['prot_ids']
         label_prot_ids = set(label_data['prot_ids'])
         
         # Load embeddings per modality
-        self.embeddings: Dict[str, torch.Tensor] = {}
-        self.prot_ids = None
+        self.embeddings: dict[str, torch.Tensor] = {}
         
         # Iterate through each modality to load embeddings and validate alignment with labels
         for i, directory in enumerate(self.embedding_dirs):
             modality = self.modalities[i]
             # Load embeddings for the modality
             data = torch.load(directory, weights_only=True)
-            modality_prot_ids = set(data['prot_ids'])
+            modality_prot_ids = data['prot_ids']
+            
+            #Check for duplicates
+            if len(modality_prot_ids) != len(set(modality_prot_ids)):
+                seen = set()
+                dupes = {pid for pid in modality_prot_ids if pid in seen or seen.add(pid)}
+                raise ValueError(f"Duplicate protein IDs found in modality {modality}: {dupes}")
             
             # Validate modaity and label proteins are identical
-            if modality_prot_ids != label_prot_ids:
-                missing = label_prot_ids - modality_prot_ids
-                extra = modality_prot_ids - label_prot_ids
+            modality_id_set = set(modality_prot_ids)
+            missing = label_prot_ids - modality_id_set
+            if missing:
                 raise ValueError(
                     f"Modality {modality} misaligned with labels. "
-                    f"Missing: {missing}, Extra: {extra}"
+                    f"Missing: {missing}"
                 )
             
-            # Validate that the order of protein IDs is consistent across modalities
-            if self.prot_ids is None:
-                self.prot_ids = data['prot_ids']
-            elif self.prot_ids != data['prot_ids']:
-                raise ValueError(f"Modality {modality} prot_ids order differs from previous modalities")
+            # Align the embeddings with the order of protein IDs in the labels file
+            id_to_idx = {pid: idx for idx, pid in enumerate(modality_prot_ids)}
+            select_idx = torch.tensor([id_to_idx[pid] for pid in self.prot_ids], dtype=torch.long)
             
             # Store the embeddings for the modality
-            self.embeddings[modality] = data['embeddings']
+            self.embeddings[modality] = data['embeddings'][select_idx]
         
-        # Store labels and protein IDs
+        # Store labels
         self.labels = label_data['labels']
-        self.prot_ids = label_data['prot_ids']
     
     #__len__ function returns the number of samples in the dataset
     def __len__(self):

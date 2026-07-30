@@ -1,9 +1,9 @@
 # Parent class
-from mlp_classifier import MLPClassifier
 # PyTorch
 import torch
-
 from configs import ClassifierConfig
+
+from mlp_classifier import MLPClassifier
 
 '''
 Class - SimpleMLP:
@@ -31,8 +31,8 @@ passing through the defined layers.
 class SimpleMLP(MLPClassifier):
     
     # Initialize the SimpleMLP model with specified parameters and activates the build method to construct the architecture
-    def __init__(self, input_dim, config: ClassifierConfig, device=None):
-        super().__init__(device)
+    def __init__(self, input_dim, config: ClassifierConfig):
+        super().__init__()
         self.input_dim = input_dim
         self.dropout_rate = config.dropout_rate
         self.activation_function = self.resolve_activation_function(config.activation_function)

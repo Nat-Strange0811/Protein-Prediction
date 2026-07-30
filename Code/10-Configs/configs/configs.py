@@ -1,9 +1,9 @@
 from pydantic import BaseModel
-from typing import Dict, List
+
 
 class ModelConfig(BaseModel):
     d_model: int
-    modalities: Dict[str, str]
+    modalities: dict[str, str]
     fusion: str
     mlp: str
 
@@ -22,24 +22,26 @@ class Config(BaseModel):
     model: ModelConfig
     paths: PathsConfig
     training: TrainingConfig
-    device: str
-    
+
 class ExtractorConfig(BaseModel):
     extractor_type: str
     model: str
-    device: str
     max_retries: int
     backoff_factor: float
-    embedding_loc: str
-    
+    panel: int = 0
+
+    @property
+    def save_dir(self) -> str:
+        base = "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Embeddings"
+        if self.extractor_type == "dscript":
+            return f"{base}/{self.panel}_{self.model}.pt"
+        return f"{base}/{self.model}.pt"
+
 class ClassifierConfig(BaseModel):
     model: str
     dropout_rate: float
     activation_function: str
-    hidden_dims: List[int]
-    device: str
-    
+    hidden_dims: list[int]
+
 class FusionLayerConfig(BaseModel):
     model: str
-    device: str
-    

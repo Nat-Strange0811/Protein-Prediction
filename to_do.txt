@@ -1,2 +1,9 @@
-- Data Loader Class
-    Load saved embeddings and pass to the model
+- Notes:
+
+Seer - 223 Proteins with > 1 Probe
+Olink - 3 Proteins with > 1 Probe
+Soma - 1058 Proteins with > 1 Probe
+    (one soma protein has 233 different probes - Q99LC4)
+
+To Do:
+Comment 00, 01 and 02 steps

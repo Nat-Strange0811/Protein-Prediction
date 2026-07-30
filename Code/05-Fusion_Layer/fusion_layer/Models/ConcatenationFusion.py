@@ -1,10 +1,9 @@
 #PyTorch import
 import torch
+from configs import FusionLayerConfig
 
 # Abstract Base Class
 from fusion_layer import FusionLayer
-from configs import FusionLayerConfig
-
 
 '''
 Class - ConcatenationFusion:
@@ -29,7 +28,7 @@ class ConcatenationFusion(FusionLayer):
             
         
         # Call the constructor of the parent class (FusionLayer) to initialize the module
-        super().__init__(config.device)
+        super().__init__()
         
         # Store the model dimension and number of modalities for later use
         self.d_model = d_model

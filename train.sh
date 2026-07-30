@@ -11,4 +11,4 @@ echo "Starting Job: $SLURM_JOB_NAME with Job ID: $SLURM_JOB_ID"
 module load miniforge
 mamba activate protein_prediction
 
-python Code/09-Scripts/train.py --config Configs/models/baseline.yaml 
+python Code/09-Scripts/train.py --config Configs/models/d_script_and_esm.yaml

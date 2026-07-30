@@ -15,6 +15,7 @@ dependencies:
   - python-dotenv
   - scikit-learn
   - httpx
+  - tenacity
   - pip
   - pip:
     - esm

@@ -1,0 +1,185 @@
+import logging
+import os
+
+import h5py
+import torch
+from configs import ExtractorConfig
+from dscript.language_model import lm_embed
+from dscript.pretrained import get_pretrained
+from torch import Tensor
+
+from embedding_extraction import EmbeddingExtractor
+
+logger = logging.getLogger(__name__)
+
+class DScriptExtractor(EmbeddingExtractor):
+    """
+    Class - DScriptExtractor:
+    
+    Extracts protein embeddings using the D-Script model, this is a PPI (protein-protein interaction) model that takes two protein sequences
+    as input and outputs a prediction for interaction. We construct the embeddings by using a panel of proteins to indicate the general 
+    interaction profile of the protein of interest.
+    """
+    
+    def __init__(self, config: ExtractorConfig):
+        
+        max_retries = config.max_retries
+        backoff_factor = config.backoff_factor
+        self.model_name = config.model
+        self.panel = config.panel
+
+        self.save_dir = config.save_dir
+        self.panel_embeddings_file = f'/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Embeddings/Panels/{self.panel}_{self.model_name}.h5'
+        
+        self.model = get_pretrained(version=self.model_name)
+        self.model.eval()
+
+        #Initalise the base class
+        super().__init__(max_retries=max_retries, backoff_factor=backoff_factor)
+        
+        if not os.path.exists(self.panel_embeddings_file):
+            logger.info(
+                "D_script embedding | model = %s | panel = %d | embedding not found, extracting and saving to disk",
+                self.model_name,
+                self.panel
+            )
+            self.extract_panel_embeddings()
+            
+        with h5py.File(self.panel_embeddings_file, "r") as h5f:
+            self.panel_embeddings = [
+                torch.from_numpy(h5f[uniprot_id][:]).unsqueeze(0).to(self.device)
+                for uniprot_id in sorted(h5f.keys())
+            ]
+
+        self._embedding_dim = len(self.panel_embeddings)
+        self.model.to(self.device)
+
+        
+    @property
+    def embedding_dim(self) -> int:
+        """
+        Method - embedding_dim:
+        
+        Returns the dimensionality of the embeddings produced by the specified DScript model.
+        
+        Args:
+        - None
+        
+        Returns:
+        - An integer representing the dimensionality of the embeddings produced by the specified DScript model
+        """
+        
+        return self._embedding_dim
+    
+    
+    def extract(self, uniprot_id: str) -> Tensor:
+            """
+            Method - extract:
+            
+            Extracts embeddings for a given UniProt ID using the D_Script model, each protein is run against a specified panel to model
+            interactivity.
+            
+            Args:
+            - uniprot_id: A string representing the UniProt ID of the protein for which to extract embeddings.
+            
+            Returns:
+            - A Tensor containing the extracted embeddings for the specified UniProt ID (returning on cpu is convention as it allows for easier interoperability with other libraries and frameworks that may not support GPU acceleration).
+            
+            Raises:
+            
+            """
+            
+            #First, we fetch the amino acid sequence from UniProt
+            sequence = self.fetch_sequence(uniprot_id)
+            
+            logger.debug(
+                "D_script embedding | id = %s | panel = %d",
+                uniprot_id,
+                self.panel
+            )
+            
+            #We then call the method to embed the sequence
+            return self._embed_sequence(sequence, label=uniprot_id)
+        
+    def filter(self, df):
+        """
+        Method - filter:
+
+        Filters a DataFrame of protein sequences to retain only those that are compatible with the D_Script model.
+
+        Args:
+        - df: A pandas DataFrame containing protein data, including a "Uni_Prot_ID" column.
+
+        Returns:
+        - Same DataFrame as passed in, as D_Script does not have any restrictions.
+        """
+
+        #Sequence length is fetched live here rather than trusting the "length" column cached at UniProt-mapping time, since UniProt records can change between when that cache was built and when extraction runs.
+        lengths = df["Uni_Prot_ID"].apply(lambda uniprot_id: len(self.fetch_sequence(uniprot_id)))
+
+        return df[(lengths <= 2000) & (lengths > 0)]
+    
+    def _embed_sequence(self, sequence: str, label: str) -> Tensor:
+        """
+        Method - _embed_sequence:
+
+        Embeds a given amino acid sequence using the D_Script model. Scoring against a panel of proteins to generate the interaction probabilities for the protein of interest.
+
+        Args:
+        - sequence: A string representing the amino acid sequence to embed.
+        - label: A string representing the label for the sequence.
+
+        Returns:
+        - A Tensor containing the embedded representation of the sequence.
+        """
+        
+        #lm_embed always returns a CPU tensor internally regardless of use_cuda, so it must be moved to self.device explicitly to match the model and panel_embeddings.
+        sequence_embed = lm_embed(sequence, use_cuda=self.device == "cuda").to(self.device)
+
+        with torch.no_grad():
+            scores = [self.model(sequence_embed, panel_member) for panel_member in self.panel_embeddings]
+            
+        return torch.stack(scores).cpu()
+            
+    def extract_panel_embeddings(self):
+        """
+        Method - extract_panel_embeddings:
+        
+        Extracts embeddings for a predefined panel of proteins using the D_Script model and saves them to disk.
+        
+        Args:
+        - None
+        
+        Returns:
+        - None (embeddings are saved to disk)
+        
+        Raises:
+        - RuntimeError: If the panel number is not valid (e.g., if it does not correspond to a predefined set of panels).
+        """
+        
+        panel_path = f"/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Panels/panel_{self.panel}.txt"
+        
+        if not os.path.exists(panel_path):
+            raise RuntimeError(
+                "Panel not found, please submit a valid panel to the extractor"
+            )
+
+        os.makedirs(os.path.dirname(self.panel_embeddings_file), exist_ok=True)
+
+        with h5py.File(self.panel_embeddings_file, "w") as h5f, open(panel_path, "r") as f:
+            for line in f:
+                uniprot_id = line.strip()
+
+                try:
+                    sequence = self.fetch_sequence(uniprot_id)
+                except Exception as e:
+                    os.remove(self.panel_embeddings_file)
+                    raise RuntimeError(
+                        f"Failed to fetch sequence for UniProt ID: {uniprot_id}"
+                    ) from e
+
+                embedding = lm_embed(sequence, use_cuda=self.device == "cuda")
+
+                h5f.create_dataset(uniprot_id, data=embedding.squeeze(0).cpu().numpy())
+                
+        

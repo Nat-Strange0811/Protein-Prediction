@@ -1,7 +1,8 @@
 # PyTorch
-import torch
 # Abstract Base Class
 from abc import ABC, abstractmethod
+
+import torch
 
 '''
 Class - MLPClassifier:
@@ -28,9 +29,9 @@ class MLPClassifier(torch.nn.Module, ABC):
         'sigmoid': torch.nn.Sigmoid,
     }
     
-    def __init__(self, device=None):
+    def __init__(self):
         super().__init__()
-        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     
     @abstractmethod

@@ -2,9 +2,6 @@
 import torch
 import torch.nn as nn
 
-# typing imports
-from typing import List
-
 # FusionLayer and MLPClassifier imports
 from fusion_layer import FusionLayer
 from mlp_classifier import MLPClassifier
@@ -52,7 +49,7 @@ class FusionModel(nn.Module):
         self.fusion_layer = fusion_layer
         self.mlp_classifier = mlp_classifier
         
-    def forward(self, embeddings: List[torch.Tensor]) -> torch.Tensor:
+    def forward(self, embeddings: list[torch.Tensor]) -> torch.Tensor:
         
         # Project each embedding to the common dimension d_model and normalize it using the corresponding projection and normalization layers
         projected_embeddings = [

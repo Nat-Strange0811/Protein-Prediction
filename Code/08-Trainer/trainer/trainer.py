@@ -1,16 +1,18 @@
 #PyTorch imports
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-# sklearn imports
-from sklearn.metrics import roc_auc_score
 # Path and typing imports
 from pathlib import Path
-from typing import Tuple
-# FusionModel import
-from fusion_model import FusionModel
+
+import torch
+import torch.nn as nn
 from configs import Config
 from dataset import ProteinDataset
+
+# FusionModel import
+from fusion_model import FusionModel
+
+# sklearn imports
+from sklearn.metrics import roc_auc_score
+from torch.utils.data import DataLoader, random_split
 
 '''
 Class - Trainer:
@@ -82,7 +84,7 @@ class Trainer:
     Raises:
     - None
     '''
-    def _run_epoch(self, loader, train: bool) -> Tuple[float, float, float]:
+    def _run_epoch(self, loader, train: bool) -> tuple[float, float, float]:
         # Set the model to training or evaluation mode based on the 'train' parameter
         self.model.train() if train else self.model.eval()
         # Initialise total loss and lists to store predictions and labels for AUC and accuracy calculation
@@ -98,7 +100,7 @@ class Trainer:
                 labels = labels.to(self.device)
                 
                 # Forward pass through the model to get predictions and compute the loss
-                preds = self.model(embeddings).squeeze()
+                preds = self.model(embeddings).squeeze(-1)
                 loss = self.criterion(preds, labels)
                 
                 # If in training mode, perform backpropagation and update the model parameters

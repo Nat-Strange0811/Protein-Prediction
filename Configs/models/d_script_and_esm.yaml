@@ -2,6 +2,8 @@ model:
   d_model: 512
   modalities: 
     esm2: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/extractors/esm-C.yaml'
+    d_script_general: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/extractors/d_script_general.yaml'
+    d_script_excretion: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/extractors/d_script_excretion.yaml'
   fusion: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/fusion_layers/concatenation.yaml'
   mlp: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/classifiers/SimpleMLP.yaml'
 
@@ -10,7 +12,6 @@ training:
   batch_size: 32
   patience: 20
   
-
 paths:
   embedding_dir: 'Data/Embeddings/'
   labels_path: 'Data/Labels/labels.pt'

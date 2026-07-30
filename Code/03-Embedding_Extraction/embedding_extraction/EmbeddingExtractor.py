@@ -1,21 +1,22 @@
 #Logging is an import that allows us to log messages in our code. It is a built-in module in Python that provides a flexible framework for emitting log messages from Python programs. We can use it to track events that happen when some software runs, which can be helpful for debugging and monitoring the software's behavior.
 import logging
+
 #ABC or abstract base class is a module that allows us to define base classes that cannot be instantiated but define a structure for derived classes.
 from abc import ABC, abstractmethod
 
 #Path import for saving
 from pathlib import Path
 
+import pandas as pd
+
 #Requests is a library that allows us to send HTTP requests in Python. It provides a simple and elegant way to interact with web services and APIs. We can use it to make GET, POST, PUT, DELETE, and other types of HTTP requests, and it also supports features like authentication, sessions, and retries.
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 #Torch is a popular open-source machine learning library developed by Facebook's AI Research lab. It provides a flexible and efficient platform for building and training deep learning models. The 'Tensor' class in PyTorch is a multi-dimensional array that can be used to store and manipulate data for machine learning tasks. It is similar to NumPy arrays but with additional capabilities for GPU acceleration and automatic differentiation, making it a fundamental building block for deep learning models in PyTorch.
 import torch
+from requests.adapters import HTTPAdapter
 from torch import Tensor
-
-import pandas as pd
+from urllib3.util.retry import Retry
 
 #Module logger - inheriting classes share this unless otherwise defined.
 logger = logging.getLogger(__name__)
@@ -50,13 +51,12 @@ class EmbeddingExtractor(ABC):
     
     
     def __init__(self,
-                 device: str | None = None,
                  max_retries: int = 3,
                  backoff_factor: float = 0.5
                  ):
-        
+
         #Set the device to run on, gpu if available, otherwise cpu.
-        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._session = self._build_session(max_retries, backoff_factor)
         
     @abstractmethod
@@ -72,7 +72,6 @@ class EmbeddingExtractor(ABC):
         
         Raises:
         - requests.HTTPError: If the HTTP request to retrieve the embeddings fails (e.g., due to network issues, server errors, or invalid UniProt ID).
-        - KeyError: If the UniProt ID is not found in a precomputed embedding store (e.g. PINNACLE).
         """
         ...
         
@@ -108,9 +107,17 @@ class EmbeddingExtractor(ABC):
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        if output_path.exists():
+            existing = torch.load(output_path)
+            all_ids = existing['prot_ids'] + uniprot_ids
+            all_embeddings = torch.cat([existing['embeddings'], embeddings], dim=0)
+        else:
+            all_ids = uniprot_ids
+            all_embeddings = embeddings
+
         torch.save({
-            'embeddings': embeddings,
-            'prot_ids': uniprot_ids
+            'embeddings': all_embeddings,
+            'prot_ids': all_ids
         }, output_path)
         
     @property
@@ -142,8 +149,12 @@ class EmbeddingExtractor(ABC):
         """
         ...
         
-        #Extract embeddings for each UniProt ID in the list and stack them into a single Tensor.
-        embeddings = [self.extract(uniprot_id) for uniprot_id in uniprot_ids]
+        #Extract embeddings for each UniProt ID in the list and stack them into a single Tensor. Cast to float32 here (rather than in each extractor) so every modality is stored at a consistent precision regardless of what dtype its underlying model natively returns (e.g. Forge returns bfloat16).
+        embeddings = []
+        for uniprot_id in uniprot_ids:
+            embedding = self.extract(uniprot_id).float()
+            self.save(embedding.unsqueeze(0), [uniprot_id], self.save_dir)
+            embeddings.append(embedding)
         return torch.stack(embeddings, dim=0)
     
     def fetch_sequence(self, uniprot_id: str) -> str:

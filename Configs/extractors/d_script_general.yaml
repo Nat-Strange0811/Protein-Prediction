@@ -1,0 +1,5 @@
+extractor_type: dscript
+model: human_v2
+max_retries: 3
+backoff_factor: 0.5
+panel: 2

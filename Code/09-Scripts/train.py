@@ -1,18 +1,22 @@
-from extract import extract_embeddings, extract_dimensions_from_existing_embeddings, save_labels
-from configs import Config, ExtractorConfig, ClassifierConfig, FusionLayerConfig
-from dataset import ProteinDataset
-from fusion_layer import ConcatenationFusion
-from mlp_classifier import SimpleMLP
-from fusion_model import FusionModel
-from trainer import Trainer
-from data_prep import prepare_data
-
-from dotenv import load_dotenv
+import argparse
 from pathlib import Path
 
+import pandas as pd
 import yaml
-import os
-import argparse
+from configs import ClassifierConfig, Config, ExtractorConfig, FusionLayerConfig
+from data_prep import prepare_data
+from dataset import ProteinDataset
+from dotenv import load_dotenv
+from extract import (
+    cached_prot_ids_current,
+    extract_dimensions_from_existing_embeddings,
+    extract_embeddings,
+    save_labels,
+)
+from fusion_layer import ConcatenationFusion
+from fusion_model import FusionModel
+from mlp_classifier import SimpleMLP
+from trainer import Trainer
 
 load_dotenv("/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Environment/protein-prediction.env")
 
@@ -54,21 +58,22 @@ def load_dataset(config):
     
     modalities = config.model.modalities
     raw_csv = config.paths.raw_csv
+    
     labels_path = Path(config.paths.labels_path)
     embedding_dim = []
     embedding_dirs = []
     
-    for modality, extractor_config_path in modalities.items():
+    for extractor_config_path in modalities.values():
         extractor_config = load_config(extractor_config_path, "extractor")
-        embedding_dir = extractor_config.embedding_loc
+        embedding_dir = extractor_config.save_dir
         embedding_dirs.append(embedding_dir)
         
-        if not os.path.exists(embedding_dir):
-            embedding_dim.append(extract_embeddings(raw_csv, extractor_config))
-        else:
+        if cached_prot_ids_current(embedding_dir, raw_csv):
             embedding_dim.append(extract_dimensions_from_existing_embeddings(embedding_dir))
-    
-    if not labels_path.exists():
+        else:
+            embedding_dim.append(extract_embeddings(raw_csv, extractor_config))
+
+    if not cached_prot_ids_current(str(labels_path), raw_csv):
         save_labels(raw_csv, labels_path)
     
     dataset = ProteinDataset(embedding_dirs, list(modalities.keys()), labels_path)
@@ -133,7 +138,8 @@ def main():
     config = load_config(config_path, "config")
     
     print(f"Running data preparation")
-    prepare_data([load_config(path, "extractor") for path in config.model.modalities.values()], config.paths.raw_csv)
+    raw_csv_prefix = str(Path(config.paths.raw_csv).with_suffix(''))
+    prepare_data([load_config(path, "extractor") for path in config.model.modalities.values()], raw_csv_prefix)
     
     print("Loading dataset")
     dataset, embedding_dims = load_dataset(config)
