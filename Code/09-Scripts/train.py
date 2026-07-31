@@ -139,7 +139,12 @@ def main():
     
     print(f"Running data preparation")
     raw_csv_prefix = str(Path(config.paths.raw_csv).with_suffix(''))
-    prepare_data([load_config(path, "extractor") for path in config.model.modalities.values()], raw_csv_prefix)
+    prepare_data(
+        [load_config(path, "extractor") for path in config.model.modalities.values()],
+        raw_csv_prefix,
+        backoff_factor=config.uni_prot.backoff_factor,
+        retries=config.uni_prot.retries,
+    )
     
     print("Loading dataset")
     dataset, embedding_dims = load_dataset(config)

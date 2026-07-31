@@ -9,14 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 
-#Requests is a library that allows us to send HTTP requests in Python. It provides a simple and elegant way to interact with web services and APIs. We can use it to make GET, POST, PUT, DELETE, and other types of HTTP requests, and it also supports features like authentication, sessions, and retries.
-import requests
-
 #Torch is a popular open-source machine learning library developed by Facebook's AI Research lab. It provides a flexible and efficient platform for building and training deep learning models. The 'Tensor' class in PyTorch is a multi-dimensional array that can be used to store and manipulate data for machine learning tasks. It is similar to NumPy arrays but with additional capabilities for GPU acceleration and automatic differentiation, making it a fundamental building block for deep learning models in PyTorch.
 import torch
-from requests.adapters import HTTPAdapter
 from torch import Tensor
-from urllib3.util.retry import Retry
 
 #Module logger - inheriting classes share this unless otherwise defined.
 logger = logging.getLogger(__name__)
@@ -46,18 +41,14 @@ class EmbeddingExtractor(ABC):
         - _get(url: str) -> requests.Response: A helper method that performs a GET request to the specified URL using the configured session and handles any HTTP errors that may occur during the request.
     '''
     
-    #UNIPROT_FASTA_URL for amino acid fetching
-    UNIPROT_FASTA_URL = "https://rest.uniprot.org/uniprotkb/{uniprot_id}.fasta"
     
-    
-    def __init__(self,
-                 max_retries: int = 3,
-                 backoff_factor: float = 0.5
-                 ):
+    def __init__(self):
 
         #Set the device to run on, gpu if available, otherwise cpu.
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self._session = self._build_session(max_retries, backoff_factor)
+        self.uni_prot_cache = pd.read_parquet(
+            "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/uni_prot_cache.parquet"
+        ).set_index("Uni_Prot_ID")
         
     @abstractmethod
     def extract(self, uniprot_id: str):
@@ -166,79 +157,6 @@ class EmbeddingExtractor(ABC):
         
         Returns:
         - A string containing the amino acid sequence for the specified UniProt ID.
-        
-        Raises:
-        - requests.HTTPError: If the HTTP request to retrieve the sequence fails (e.g., due to network issues, server errors, or invalid UniProt ID).
         """
         
-        url = self.UNIPROT_FASTA_URL.format(uniprot_id=uniprot_id)
-        response = self._get(url)
-        
-        #Fasta format is >header\nseqeuence, so we split on newline and take the second part as the sequence.
-        lines = response.text.strip().split('\n')
-        sequence = ''.join(lines[1:])  # Join all lines after the header to get the full sequence
-        
-        logger.debug(
-            "Fetched sequence for UniProt ID %s: %d", uniprot_id, len(sequence)
-        )
-        
-        return sequence
-    
-    def _build_session(self, max_retries: int, backoff_factor: float) -> requests.Session:
-        """
-        Method - Build Session:
-        
-        Args:
-        - max_retries: An integer representing the maximum number of retries for failed HTTP requests.
-        - backoff_factor: A float representing the backoff factor for retrying failed HTTP requests (e.g., 0.5 means that the delay between retries will be 0.5 seconds, then 1 second, then 2 seconds, etc.).
-        
-        Returns:
-        - A configured requests.Session object with retry logic.
-        """
-        
-        #The retry strategy utilises the library import Retry from urllib3.util.retry to build our http session with retry logic. We specify the total number of retries, the backoff factor, 
-        #and the HTTP codes to retry on. 
-        retry_strategy = Retry(
-            total=max_retries,
-            backoff_factor=backoff_factor,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET"],
-            raise_on_status=False
-        )
-        
-        #The HTTPAdapter is then used to mount the retry strategy to both http and https requests in the session.
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        
-        #We then create a requests.Session and mount the adapter to both http and https requests, ensuring that all requests made through this session will have the retry logic applied.
-        session = requests.Session()
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        
-        return session
-    
-    def _get(self, url: str) -> requests.Response:
-        """
-        Method - Get:
-        
-        Args:
-        - url: A string representing the URL to which the GET request should be made.
-        
-        Returns:
-        - A requests.Response object containing the response from the GET request.
-        
-        Raises:
-        - requests.HTTPError: If the HTTP request fails (e.g., due to network issues, server errors, or invalid URL).
-        """
-        
-        #We log the URL being requested at the debug level, then we perform the GET request using the configured session. If the response is not successful (i.e., response.ok is False), we raise an 
-        #HTTPError with details about the failure.
-        logger.debug("GET %s", url)
-        response = self._session.get(url, timeout = 30)
-        
-        if not response.ok:
-            raise requests.HTTPError(
-                f"Request failed [{response.status_code}] for URL: {url}",
-                response=response
-            )
-            
-        return response
+        return self.uni_prot_cache.loc[uniprot_id, "sequence"]

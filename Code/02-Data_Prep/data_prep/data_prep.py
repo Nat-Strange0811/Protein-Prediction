@@ -2,8 +2,13 @@ from functools import reduce
 
 import numpy as np
 import pandas as pd
+
+#Requests is a library that allows us to send HTTP requests in Python. It provides a simple and elegant way to interact with web services and APIs. We can use it to make GET, POST, PUT, DELETE, and other types of HTTP requests, and it also supports features like authentication, sessions, and retries.
+import requests
 from configs import ExtractorConfig
-from embedding_extraction import ESMExtractor, DScriptExtractor
+from embedding_extraction import DScriptExtractor, ESMExtractor
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 ANNOTATION_COLS = ["gene_name", "length", "covered_PINNACLE", "capable_for_NN_integration"]
 
@@ -94,7 +99,132 @@ def save_df(df: pd.DataFrame, path: str):
         csv_df[col] = csv_df[col].apply(lambda x: "|".join(x) if isinstance(x, np.ndarray) else x)
         
     csv_df.to_csv(f"{path}.csv", index=False)
+
+def _build_session(max_retries: int, backoff_factor: float) -> requests.Session:
+    """
+    Method - Build Session:
     
+    Args:
+    - max_retries: An integer representing the maximum number of retries for failed HTTP requests.
+    - backoff_factor: A float representing the backoff factor for retrying failed HTTP requests (e.g., 0.5 means that the delay between retries will be 0.5 seconds, then 1 second, then 2 seconds, etc.).
+    
+    Returns:
+    - A configured requests.Session object with retry logic.
+    """
+    
+    #The retry strategy utilises the library import Retry from urllib3.util.retry to build our http session with retry logic. We specify the total number of retries, the backoff factor, 
+    #and the HTTP codes to retry on. 
+    retry_strategy = Retry(
+        total=max_retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False
+    )
+    
+    #The HTTPAdapter is then used to mount the retry strategy to both http and https requests in the session.
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    
+    #We then create a requests.Session and mount the adapter to both http and https requests, ensuring that all requests made through this session will have the retry logic applied.
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
+    return session
+
+def _get(session, url: str) -> requests.Response:
+    """
+    Method - Get:
+    
+    Args:
+    - url: A string representing the URL to which the GET request should be made.
+    
+    Returns:
+    - A requests.Response object containing the response from the GET request.
+    
+    Raises:
+    - requests.HTTPError: If the HTTP request fails (e.g., due to network issues, server errors, or invalid URL).
+    """
+    
+    response = session.get(url, timeout = 30)
+    
+    if not response.ok:
+        raise requests.HTTPError(
+            f"Request failed [{response.status_code}] for URL: {url}",
+            response=response
+        )
+        
+    return response
+
+def fetch_sequence(session, UNIPROT_FASTA_URL, uniprot_id: str) -> str:
+    """
+    Method - Fetch Sequence:
+    
+    Args:
+    - session: A requests.Session object with retry logic.
+    - UNIPROT_FASTA_URL: A string representing the URL template for fetching UniProt sequences.
+    - uniprot_id: A string representing the UniProt ID of the protein for which we want to fetch the amino acid sequence.
+    
+    Returns:
+    - A string containing the amino acid sequence for the specified UniProt ID.
+    
+    Raises:
+    - requests.HTTPError: If the HTTP request to retrieve the sequence fails (e.g., due to network issues, server errors, or invalid UniProt ID).
+    """
+    
+    url = UNIPROT_FASTA_URL.format(uniprot_id=uniprot_id)
+    response = _get(session, url)
+    
+    #Fasta format is >header\nseqeuence, so we split on newline and take the second part as the sequence.
+    lines = response.text.strip().split('\n')
+    sequence = ''.join(lines[1:])  # Join all lines after the header to get the full sequence
+    
+    return sequence
+
+def _panel_uniprot_ids(configs: list[ExtractorConfig] = None) -> set[str]:
+    """
+    D_Script scores each protein against a fixed interactor panel (Data/Panels/panel_<n>.txt)
+    that's independent of the true_positives/true_negatives set - those IDs need to be in the
+    UniProt cache too, or DScriptExtractor.extract_panel_embeddings() will fail to look them up.
+    Derived from the configs actually in use so we don't fetch panels nobody asked for.
+    """
+    ids = set()
+    for config in configs or []:
+        if config.extractor_type != "dscript":
+            continue
+        panel_path = f"/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Panels/panel_{config.panel}.txt"
+        with open(panel_path) as f:
+            ids.update(line.strip() for line in f if line.strip())
+    return ids
+
+def create_uni_prot_cache(df: pd.DataFrame, extra_uniprot_ids: set[str] = frozenset(), cache_path: str = "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/uni_prot_cache.parquet", backoff_factor: float = 0.5, retries: int = 3):
+    #UNIPROT_FASTA_URL for amino acid fetching
+    UNIPROT_FASTA_URL = "https://rest.uniprot.org/uniprotkb/{uniprot_id}.fasta"
+
+    session = _build_session(max_retries=retries, backoff_factor=backoff_factor)
+
+    uni_prot_cache = pd.DataFrame(columns=["Uni_Prot_ID", "sequence", "gene_name", "length"])
+
+    # extra_uniprot_ids (e.g. D_Script panel members) aren't part of df and have no gene_name -
+    # fetched and cached the same way, just without that annotation.
+    all_ids = list(dict.fromkeys(df["Uni_Prot_ID"].tolist())) + [uid for uid in extra_uniprot_ids if uid not in set(df["Uni_Prot_ID"])]
+
+    for uniprot_id in all_ids:
+        gene_rows = df.loc[df["Uni_Prot_ID"] == uniprot_id, "gene_name"]
+        gene_name = gene_rows.iloc[0] if not gene_rows.empty else None
+        try:
+            sequence = fetch_sequence(session, UNIPROT_FASTA_URL, uniprot_id)
+            length = len(sequence)
+        except requests.HTTPError as e:
+            # Keep the ID in the cache with an empty sequence rather than dropping the row -
+            # a missing row causes a KeyError in fetch_sequence(), while an empty sequence is
+            # already excluded by the "length > 0" check every extractor's filter() applies.
+            print(f"Failed to fetch sequence for UniProt ID {uniprot_id}: {e}")
+            sequence, length = "", 0
+        uni_prot_cache = pd.concat([uni_prot_cache, pd.DataFrame({"Uni_Prot_ID": [uniprot_id], "sequence": [sequence], "gene_name": [gene_name], "length": [length]})], ignore_index=True)
+
+    uni_prot_cache.to_parquet(cache_path, index=False)
+
 def filter_NN_compatible(df: pd.DataFrame, configs: list[ExtractorConfig] = None) -> pd.DataFrame:
     extractor_registry = {
         "esm": ESMExtractor,
@@ -111,7 +241,7 @@ def filter_NN_compatible(df: pd.DataFrame, configs: list[ExtractorConfig] = None
         
     return df
 
-def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str = "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/true_positives_and_true_negatives"):
+def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str = "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/true_positives_and_true_negatives", backoff_factor: float = 0.5, retries: int = 3):
     seer = pd.read_parquet(
         "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST1_Seer_Cleaned.parquet"
     )[[
@@ -145,7 +275,11 @@ def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str =
     true_negatives = extract_true_negatives(datasets)
     no_confidence = extract_no_confidence(datasets, true_positives, true_negatives)
     
-    positives_negatives = filter_NN_compatible(pd.concat([true_positives, true_negatives], ignore_index=True), configs=extractor_configs)
+    combined = pd.concat([true_positives, true_negatives], ignore_index=True)
+    
+    create_uni_prot_cache(combined, extra_uniprot_ids=_panel_uniprot_ids(extractor_configs), cache_path="/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/uni_prot_cache.parquet", backoff_factor=backoff_factor, retries=retries)
+    
+    positives_negatives = filter_NN_compatible(combined, configs=extractor_configs)
     
     save_df(positives_negatives, raw_csv)
     save_df(no_confidence, "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/no_confidence")

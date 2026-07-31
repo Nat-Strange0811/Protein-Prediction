@@ -7,6 +7,10 @@ class ModelConfig(BaseModel):
     fusion: str
     mlp: str
 
+class UniProtConfig(BaseModel):
+    backoff_factor: float
+    retries: int
+
 class PathsConfig(BaseModel):
     embedding_dir: str
     labels_path: str
@@ -22,12 +26,11 @@ class Config(BaseModel):
     model: ModelConfig
     paths: PathsConfig
     training: TrainingConfig
+    uni_prot: UniProtConfig
 
 class ExtractorConfig(BaseModel):
     extractor_type: str
     model: str
-    max_retries: int
-    backoff_factor: float
     panel: int = 0
 
     @property

@@ -44,8 +44,6 @@ class ESMExtractor(EmbeddingExtractor):
                 tokens: list[str] | None = None
                 ):
 
-        max_retries = config.max_retries
-        backoff_factor = config.backoff_factor
         self.save_dir = config.save_dir
 
         self.model_name = config.model
@@ -53,7 +51,7 @@ class ESMExtractor(EmbeddingExtractor):
         self._embedding_dim = None  # Initialize embedding dimension to None, will be set after first extraction
 
         #Initalise the base class
-        super().__init__(max_retries=max_retries, backoff_factor=backoff_factor)
+        super().__init__()
 
         #We support multiple Forge API tokens so that we can rotate onto a fresh one when the current one runs out of credits, rather than the whole extraction run failing. Tokens are defined in environment level variables so as to avoid hardcoding them in our codebase.
         self._tokens = tokens if tokens is not None else self._load_tokens_from_env()

@@ -23,8 +23,6 @@ class DScriptExtractor(EmbeddingExtractor):
     
     def __init__(self, config: ExtractorConfig):
         
-        max_retries = config.max_retries
-        backoff_factor = config.backoff_factor
         self.model_name = config.model
         self.panel = config.panel
 
@@ -35,7 +33,7 @@ class DScriptExtractor(EmbeddingExtractor):
         self.model.eval()
 
         #Initalise the base class
-        super().__init__(max_retries=max_retries, backoff_factor=backoff_factor)
+        super().__init__()
         
         if not os.path.exists(self.panel_embeddings_file):
             logger.info(

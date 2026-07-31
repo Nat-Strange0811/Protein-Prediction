@@ -17,3 +17,7 @@ paths:
   labels_path: 'Data/Labels/labels.pt'
   checkpoint_dir: 'Logs/Checkpoints/'
   raw_csv: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/true_positives_and_true_negatives.csv'
+
+uni_prot:
+  backoff_factor: 0.5
+  retries: 3

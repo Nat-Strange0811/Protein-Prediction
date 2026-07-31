@@ -1,5 +1,3 @@
 extractor_type: esm
 model: esmc-300m-2024-12 #or esmc-600m-2024-12
-max_retries: 3
-backoff_factor: 0.5
 panel: 1
