@@ -128,16 +128,16 @@ def load_classifier(config, input_dim):
 
 def main():
     
-    print("Extracting arguments")
+    print("---------------Extracting arguments---------------\n")
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True, help='Path to config YAML file')
     args = parser.parse_args()
     config_path = args.config
     
-    print(f"Loading configuration from {config_path}")
+    print(f"---------------Loading configuration from {config_path}---------------\n")
     config = load_config(config_path, "config")
     
-    print(f"Running data preparation")
+    print(f"---------------Running data preparation---------------\n")
     raw_csv_prefix = str(Path(config.paths.raw_csv).with_suffix(''))
     prepare_data(
         [load_config(path, "extractor") for path in config.model.modalities.values()],
@@ -146,23 +146,23 @@ def main():
         retries=config.uni_prot.retries,
     )
     
-    print("Loading dataset")
+    print(f"---------------Loading dataset---------------\n")
     dataset, embedding_dims = load_dataset(config)
-    print("Loading fusion layer")
+    print(f"---------------Loading fusion layer---------------")
     fusionLayer = load_fusion_layer(config)
     
     fusionLayer_output_dim = fusionLayer.output_dim()
     
-    print("Loading classifier")
+    print(f"---------------Loading classifier---------------\n")
     classifier = load_classifier(config, fusionLayer_output_dim)
-    print("Loading fusion model")
+    print(f"---------------Loading fusion model---------------\n")
     fusion_model = FusionModel(embedding_dims, config.model.d_model, fusionLayer, classifier)
     
-    print("Initializing trainer")
+    print(f"---------------Initializing trainer---------------\n")
     trainer = Trainer(fusion_model, dataset, config)
-    print("Starting training")
+    print(f"---------------Starting training---------------\n")
     trainer.train(config.training.epochs)
-    print("Evaluating best model on test set")
+    print(f"---------------Evaluating best model on test set---------------\n")
     trainer.evaluate()
     
 if __name__ == "__main__":

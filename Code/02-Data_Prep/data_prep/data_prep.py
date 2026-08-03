@@ -14,35 +14,61 @@ ANNOTATION_COLS = ["gene_name", "length", "covered_PINNACLE", "capable_for_NN_in
 
 def coalesce_annotation_columns(merged: pd.DataFrame) -> pd.DataFrame:
     """
+    Function - coalsece_annotation_columns:
+    
     Merging seer/olink/soma (which all carry the same gene_name/length/covered_PINNACLE/
     capable_for_NN_integration columns from the UniProt mapping) leaves duplicate _x/_y
     columns from the merge suffixing. Since these columns describe the protein, not the
     technology, they're identical wherever more than one is non-null - so collapse them
     back into a single column per Uni_Prot_ID.
+    
+    Inputs:
+    - merged: A pandas DataFrame resulting from merging the seer, olink, and soma datasets.
+    
+    Returns:
+    - A pandas DataFrame with coalesced annotation columns, where duplicate columns are combined into a single column per Uni_Prot_ID.
     """
+    #Loop over each annotation column and find the candidates for coalescing (i.e., columns with the same name but different suffixes).
     for col in ANNOTATION_COLS:
         candidates = [c for c in (f"{col}_x", f"{col}_y", col) if c in merged.columns]
+        #If there are multiple candidates, use reduce to combine them into a single column using combine_first, which takes the first non-null value from the candidates. Finally, drop the original candidate columns that were coalesced.
         if len(candidates) > 1:
             merged[col] = reduce(lambda a, b: a.combine_first(b), [merged[c] for c in candidates])
             merged.drop(columns=[c for c in candidates if c != col], inplace=True)
     return merged
 
 def extract_true_positives(datasets, spread: float = 0.4, medium: float = 0.4, minimum: float = 0.2, coverage: int = 2):
-
+    """
+    Function - extract_true_positives:
+    
+    This function identifies true positive proteins based on specific criteria related to their spread, median prediction, and lower quartile prediction values across different datasets
+    (seer, olink, soma). It aggregates the data to determine which proteins meet the criteria for being well-covered.
+    
+    Inputs:
+    - datasets: A dictionary containing the datasets for seer, olink, and soma.
+    - spread: A float representing the maximum allowed spread for a protein to be considered well-covered.
+    - medium: A float representing the minimum required median prediction value for a protein to be considered well-covered.
+    - minimum: A float representing the minimum required lower quartile prediction value for a protein to be considered well-covered.
+    - coverage: An integer representing the minimum number of datasets in which a protein must be well-covered to be considered a true positive.
+    """
+    #Create a dictionary to hold the processed datasets for each technology (seer, olink, soma).
     local_datasets = {}
 
+    #Loop over each dataset
     for name, dataset in datasets.items():
+        #Copy the dataset to avoid modifying the original data.
         d = dataset.copy()
         d[f"{name}_well_covered"] = (d[f"{name}_spread"] <= spread) & (d[f"{name}_median_pred"] >= medium) & (d[f"{name}_p25_pred"] >= minimum)
-        # gene_name/length/covered_PINNACLE/capable_for_NN_integration are constant per Uni_Prot_ID (they come
-        # from the same UniProt mapping regardless of probe), so "first" preserves them through the collapse
-        # to one row per protein instead of dropping them like a bare Series groupby would.
+        # gene_name/length/covered_PINNACLE/capable_for_NN_integration are constant per Uni_Prot_ID so we can just take the first value for those columns when aggregating.
+        # We mean the boolean well_covered column to determine if any of the probes for a given Uni_Prot_ID are well covered.
         agg = {f"{name}_well_covered": "mean", **{col: "first" for col in ANNOTATION_COLS}}
+
         d = d.groupby("Uni_Prot_ID").agg(agg).reset_index()
         d[f"{name}_well_covered"] = d[f"{name}_well_covered"] >= 1
 
         local_datasets[name] = d
 
+    #Merge the processed datasets for seer, olink, and soma on the Uni_Prot_ID column using an outer join. This ensures that all proteins from all datasets are included in the merged DataFrame.
     merged = local_datasets["seer"].merge(local_datasets["olink"], on="Uni_Prot_ID", how="outer").merge(local_datasets["soma"], on="Uni_Prot_ID", how="outer")
     merged = coalesce_annotation_columns(merged)
     merged["well_covered_count"] = merged[["seer_well_covered", "olink_well_covered", "soma_well_covered"]].sum(axis=1)
@@ -55,16 +81,40 @@ def extract_true_positives(datasets, spread: float = 0.4, medium: float = 0.4, m
     return true_positives
     
 def extract_true_negatives(datasets, spread: float = 0.6, medium: float = 0.15, minimum: float = 0.05, coverage: int = 2):
+    """
+    Function - extract_true_negatives:
+    
+    This function identifies true negative proteins based on specific criteria related to their spread, median prediction, and lower quartile prediction values across different datasets
+    (seer, olink, soma). It aggregates the data to determine which proteins meet the criteria for being poorly covered.
+    
+    Inputs:
+    - datasets: A dictionary containing the datasets for seer, olink, and soma.
+    - spread: A float representing the minimum allowed spread for a protein to be considered poorly covered
+    - medium: A float representing the maximum allowed median prediction value for a protein to be considered poorly covered.
+    - minimum: A float representing the maximum allowed lower quartile prediction value for a protein to be considered poorly covered.
+    - coverage: An integer representing the minimum number of datasets in which a protein must be poorly covered to be considered a true negative.
+    
+    Returns:
+    - true_negatives: A pandas DataFrame containing the true negative proteins that meet the specified criteria for being poorly covered across the datasets.
+    """
+    #Create a dictionary to hold the processed datasets for each technology (seer, olink, soma).
     local_datasets = {}
     
+    #Loop over each dataset
     for name, dataset in datasets.items():
+        #Copy the dataset to avoid modifying the original data.
         d = dataset.copy()
         d[f"{name}_poorly_covered"] = (d[f"{name}_spread"] > spread) | (d[f"{name}_median_pred"] < medium) | (d[f"{name}_p25_pred"] < minimum)
+        # gene_name/length/covered_PINNACLE/capable_for_NN_integration are constant per Uni_Prot_ID so we can just take the first value for those columns when aggregating.
+        # We mean the boolean poorly_covered column to determine if any of the probes for a given Uni_Prot_ID are poorly covered.
         agg = {f"{name}_poorly_covered": "mean", **{col: "first" for col in ANNOTATION_COLS}}
+        
         d = d.groupby("Uni_Prot_ID").agg(agg).reset_index()
         d[f"{name}_poorly_covered"] = d[f"{name}_poorly_covered"] >= 1
+        
         local_datasets[name] = d
 
+    #Merge the processed datasets for seer, olink, and soma on the Uni_Prot_ID column using an outer join. This ensures that all proteins from all datasets are included in the merged DataFrame.
     merged = local_datasets["seer"].merge(local_datasets["olink"], on="Uni_Prot_ID", how="outer").merge(local_datasets["soma"], on="Uni_Prot_ID", how="outer")
     merged = coalesce_annotation_columns(merged)
     merged["poorly_covered_count"] = merged[["seer_poorly_covered", "olink_poorly_covered", "soma_poorly_covered"]].sum(axis=1)
@@ -77,6 +127,21 @@ def extract_true_negatives(datasets, spread: float = 0.6, medium: float = 0.15, 
     return true_negatives
 
 def extract_no_confidence(datasets, true_positives, true_negatives):
+    """
+    Function - extract_no_confidence:
+    
+    This function identifies proteins that do not have a clear classification as true positives or true negatives based on the provided datasets. It merges 
+    the datasets and filters out proteins that are present in either the true positives or true negatives sets, resulting in a DataFrame of proteins with 
+    no confidence in their classification.
+    
+    Inputs:
+    - datasets: A dictionary containing the datasets for seer, olink, and soma.
+    - true_positives: A pandas DataFrame containing the true positive proteins.
+    - true_negatives: A pandas DataFrame containing the true negative proteins.
+    
+    Returns:
+    - no_confidence: A pandas DataFrame containing proteins that do not have a clear classification as true positives or true negatives, with a label of -1.
+    """
     merged = datasets["seer"].merge(datasets["olink"], on="Uni_Prot_ID", how="outer").merge(datasets["soma"], on="Uni_Prot_ID", how="outer")
     merged = coalesce_annotation_columns(merged)
     no_confidence = merged[~merged["Uni_Prot_ID"].isin(true_positives["Uni_Prot_ID"]) & ~merged["Uni_Prot_ID"].isin(true_negatives["Uni_Prot_ID"])].copy()
@@ -111,6 +176,8 @@ def _build_session(max_retries: int, backoff_factor: float) -> requests.Session:
     Returns:
     - A configured requests.Session object with retry logic.
     """
+    
+    print(f"Building HTTP session with max_retries={max_retries} and backoff_factor={backoff_factor} for fetching UniProt sequences.\n")
     
     #The retry strategy utilises the library import Retry from urllib3.util.retry to build our http session with retry logic. We specify the total number of retries, the backoff factor, 
     #and the HTTP codes to retry on. 
@@ -209,13 +276,18 @@ def create_uni_prot_cache(df: pd.DataFrame, extra_uniprot_ids: set[str] = frozen
     # fetched and cached the same way, just without that annotation.
     all_ids = list(dict.fromkeys(df["Uni_Prot_ID"].tolist())) + [uid for uid in extra_uniprot_ids if uid not in set(df["Uni_Prot_ID"])]
 
+    count = 0
+    total_ids = len(all_ids)
+
     for uniprot_id in all_ids:
+        
         gene_rows = df.loc[df["Uni_Prot_ID"] == uniprot_id, "gene_name"]
         gene_name = gene_rows.iloc[0] if not gene_rows.empty else None
         try:
             sequence = fetch_sequence(session, UNIPROT_FASTA_URL, uniprot_id)
             length = len(sequence)
-        except requests.HTTPError as e:
+            count += 1
+        except requests.RequestException as e:
             # Keep the ID in the cache with an empty sequence rather than dropping the row -
             # a missing row causes a KeyError in fetch_sequence(), while an empty sequence is
             # already excluded by the "length > 0" check every extractor's filter() applies.
@@ -223,6 +295,11 @@ def create_uni_prot_cache(df: pd.DataFrame, extra_uniprot_ids: set[str] = frozen
             sequence, length = "", 0
         uni_prot_cache = pd.concat([uni_prot_cache, pd.DataFrame({"Uni_Prot_ID": [uniprot_id], "sequence": [sequence], "gene_name": [gene_name], "length": [length]})], ignore_index=True)
 
+    print(f"Total UniProt IDs processed: {count}\n")
+    
+    if count/total_ids < 0.95 if total_ids > 0 else False:
+        print(f"Warning: Only {count}/{total_ids} ({count/total_ids:.2%}) of UniProt IDs were successfully processed. Defaulting to cache on disk, which may be incomplete.\n")
+        return
     uni_prot_cache.to_parquet(cache_path, index=False)
 
 def filter_NN_compatible(df: pd.DataFrame, configs: list[ExtractorConfig] = None) -> pd.DataFrame:
@@ -231,7 +308,9 @@ def filter_NN_compatible(df: pd.DataFrame, configs: list[ExtractorConfig] = None
         "dscript": DScriptExtractor
     }
     
-    for config in configs:
+    for i, config in enumerate(configs):
+        print(f"Filtering for NN-compatible proteins using extractor: {config.extractor_type}, extractor {i}")
+        
         extractor_class = extractor_registry.get(config.extractor_type)
         if not extractor_class:
             raise ValueError(f"Unknown extractor: {config.extractor_type}")
@@ -248,8 +327,6 @@ def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str =
         "Seer_ID", "Uni_Prot_ID", "seer_median_pred", "seer_p25_pred", "seer_p75_pred", *ANNOTATION_COLS
     ]]
     seer["seer_spread"] = seer["seer_p75_pred"] - seer["seer_p25_pred"]
-    
-    print(seer["Uni_Prot_ID"].apply(lambda x: x == "" or x is None or (isinstance(x, float))).sum())
 
     olink = pd.read_parquet(
         "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST2_Olink_Cleaned.parquet"
@@ -258,8 +335,6 @@ def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str =
     ]]
     olink["olink_spread"] = olink["olink_p75_pred"] - olink["olink_p25_pred"]
 
-    print(olink["Uni_Prot_ID"].apply(lambda x: x == "" or x is None or (isinstance(x, float))).sum())
-
     soma = pd.read_parquet(
         "/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/Fixed/ST3_Soma_Cleaned.parquet"
     )[[
@@ -267,18 +342,19 @@ def prepare_data(extractor_configs: list[ExtractorConfig] = None, raw_csv: str =
     ]]
     soma["soma_spread"] = soma["soma_p75_pred"] - soma["soma_p25_pred"]
     
-    print(soma["Uni_Prot_ID"].apply(lambda x: x == "" or x is None or (isinstance(x, float))).sum())
-    
     datasets = {"seer": seer, "olink": olink, "soma": soma}
     
+    print(f"------Extracting true positives, true negatives, and no confidence proteins-------\n")
     true_positives = extract_true_positives(datasets)
     true_negatives = extract_true_negatives(datasets)
     no_confidence = extract_no_confidence(datasets, true_positives, true_negatives)
     
     combined = pd.concat([true_positives, true_negatives], ignore_index=True)
     
+    print(f"------Creating UniProt cache-------\n")
     create_uni_prot_cache(combined, extra_uniprot_ids=_panel_uniprot_ids(extractor_configs), cache_path="/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/uni_prot_cache.parquet", backoff_factor=backoff_factor, retries=retries)
     
+    print(f"------Filtering for NN-compatible proteins-------\n")
     positives_negatives = filter_NN_compatible(combined, configs=extractor_configs)
     
     save_df(positives_negatives, raw_csv)

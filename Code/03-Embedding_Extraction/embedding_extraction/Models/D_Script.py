@@ -21,7 +21,7 @@ class DScriptExtractor(EmbeddingExtractor):
     interaction profile of the protein of interest.
     """
     
-    def __init__(self, config: ExtractorConfig):
+    def __init__(self, config: ExtractorConfig, mode: str = "extract"):
         
         self.model_name = config.model
         self.panel = config.panel
@@ -32,25 +32,22 @@ class DScriptExtractor(EmbeddingExtractor):
         self.model = get_pretrained(version=self.model_name)
         self.model.eval()
 
+
         #Initalise the base class
         super().__init__()
         
-        if not os.path.exists(self.panel_embeddings_file):
-            logger.info(
-                "D_script embedding | model = %s | panel = %d | embedding not found, extracting and saving to disk",
-                self.model_name,
-                self.panel
-            )
+        if mode == "extract":
+            #We check for the fidelity of the panel embeddings in this function
             self.extract_panel_embeddings()
             
-        with h5py.File(self.panel_embeddings_file, "r") as h5f:
-            self.panel_embeddings = [
-                torch.from_numpy(h5f[uniprot_id][:]).unsqueeze(0).to(self.device)
-                for uniprot_id in sorted(h5f.keys())
-            ]
+            with h5py.File(self.panel_embeddings_file, "r") as h5f:
+                self.panel_embeddings = [
+                    torch.from_numpy(h5f[uniprot_id][:]).unsqueeze(0).to(self.device)
+                    for uniprot_id in sorted(h5f.keys())
+                ]
 
-        self._embedding_dim = len(self.panel_embeddings)
-        self.model.to(self.device)
+            self._embedding_dim = len(self.panel_embeddings)
+            self.model.to(self.device)
 
         
     @property
@@ -71,33 +68,33 @@ class DScriptExtractor(EmbeddingExtractor):
     
     
     def extract(self, uniprot_id: str) -> Tensor:
-            """
-            Method - extract:
-            
-            Extracts embeddings for a given UniProt ID using the D_Script model, each protein is run against a specified panel to model
-            interactivity.
-            
-            Args:
-            - uniprot_id: A string representing the UniProt ID of the protein for which to extract embeddings.
-            
-            Returns:
-            - A Tensor containing the extracted embeddings for the specified UniProt ID (returning on cpu is convention as it allows for easier interoperability with other libraries and frameworks that may not support GPU acceleration).
-            
-            Raises:
-            
-            """
-            
-            #First, we fetch the amino acid sequence from UniProt
-            sequence = self.fetch_sequence(uniprot_id)
-            
-            logger.debug(
-                "D_script embedding | id = %s | panel = %d",
-                uniprot_id,
-                self.panel
-            )
-            
-            #We then call the method to embed the sequence
-            return self._embed_sequence(sequence, label=uniprot_id)
+        """
+        Method - extract:
+        
+        Extracts embeddings for a given UniProt ID using the D_Script model, each protein is run against a specified panel to model
+        interactivity.
+        
+        Args:
+        - uniprot_id: A string representing the UniProt ID of the protein for which to extract embeddings.
+        
+        Returns:
+        - A Tensor containing the extracted embeddings for the specified UniProt ID (returning on cpu is convention as it allows for easier interoperability with other libraries and frameworks that may not support GPU acceleration).
+        
+        Raises:
+        
+        """
+        
+        #First, we fetch the amino acid sequence from UniProt
+        sequence = self.fetch_sequence(uniprot_id)
+        
+        logger.debug(
+            "D_script embedding | id = %s | panel = %d",
+            uniprot_id,
+            self.panel
+        )
+        
+        #We then call the method to embed the sequence
+        return self._embed_sequence(sequence, label=uniprot_id)
         
     def filter(self, df):
         """
@@ -161,17 +158,38 @@ class DScriptExtractor(EmbeddingExtractor):
             raise RuntimeError(
                 "Panel not found, please submit a valid panel to the extractor"
             )
+            
+        if os.path.exists(self.panel_embeddings_file):
+            panel_length = sum(1 for _ in open(panel_path))
+            try:
+                with h5py.File(self.panel_embeddings_file, "r") as h5f:
+                    uniprots_in_file = set(h5f.keys())
+            except OSError as e:
+                print(f"Error reading panel embeddings file {self.panel_embeddings_file}: {e}. Re-extracting embeddings.")
+                os.remove(self.panel_embeddings_file)
+                uniprots_in_file = set()
+                
+            if len(uniprots_in_file) == panel_length:
+                print(f"Panel embeddings for model {self.model_name} and panel {self.panel} already exist and match the expected length, skipping extraction.")
+                return
+            else:
+                print(f"Panel embeddings for model {self.model_name} and panel {self.panel} already exist but do not match the expected length, re-extracting embeddings.")
+        else:
+            os.makedirs(os.path.dirname(self.panel_embeddings_file), exist_ok=True)
+            uniprots_in_file = set()
 
-        os.makedirs(os.path.dirname(self.panel_embeddings_file), exist_ok=True)
-
-        with h5py.File(self.panel_embeddings_file, "w") as h5f, open(panel_path, "r") as f:
+        with h5py.File(self.panel_embeddings_file, "a") as h5f, open(panel_path, "r") as f:
             for line in f:
                 uniprot_id = line.strip()
+                
+                if uniprot_id in uniprots_in_file:
+                    continue
 
                 try:
                     sequence = self.fetch_sequence(uniprot_id)
+                    if not sequence:
+                        raise RuntimeError(f"UniProt Cache has no sequence data for panel member {uniprot_id} - cannot build panel embeddings.")
                 except Exception as e:
-                    os.remove(self.panel_embeddings_file)
                     raise RuntimeError(
                         f"Failed to fetch sequence for UniProt ID: {uniprot_id}"
                     ) from e

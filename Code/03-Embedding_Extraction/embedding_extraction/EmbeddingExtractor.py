@@ -138,12 +138,14 @@ class EmbeddingExtractor(ABC):
         - requests.HTTPError: If the HTTP request to retrieve the embeddings fails (e.g., due to network issues, server errors, or invalid UniProt IDs).
         - KeyError: If any of the UniProt IDs are not found in a precomputed embedding store (e.g. PINNACLE).
         """
-        ...
         
         #Extract embeddings for each UniProt ID in the list and stack them into a single Tensor. Cast to float32 here (rather than in each extractor) so every modality is stored at a consistent precision regardless of what dtype its underlying model natively returns (e.g. Forge returns bfloat16).
         embeddings = []
-        for uniprot_id in uniprot_ids:
-            embedding = self.extract(uniprot_id).float()
+        for i, uniprot_id in enumerate(uniprot_ids):
+            try:
+                embedding = self.extract(uniprot_id).float()
+            except Exception as e:
+                raise RuntimeError(f"Failed to extract embedding for UniProt ID: {uniprot_id} number {i}") from e
             self.save(embedding.unsqueeze(0), [uniprot_id], self.save_dir)
             embeddings.append(embedding)
         return torch.stack(embeddings, dim=0)

@@ -41,6 +41,7 @@ class ESMExtractor(EmbeddingExtractor):
     def __init__(
                 self,
                 config: ExtractorConfig,
+                mode: str = "extract",
                 tokens: list[str] | None = None
                 ):
 
@@ -61,13 +62,9 @@ class ESMExtractor(EmbeddingExtractor):
             )
         self._token_idx = 0
 
-        #Our client which enables us to interact with the Forge API, initialised with the first available token.
-        self._client = self._build_client(self._tokens[self._token_idx])
-
-        logger.info(
-            f"Initialized ESMExtractor with model {self.model_name} on device {self.device} "
-            f"({len(self._tokens)} Forge API token(s) available)"
-        )
+        if mode == "extract":
+            #Our client which enables us to interact with the Forge API, initialised with the first available token.
+            self._client = self._build_client(self._tokens[self._token_idx])
 
     @staticmethod
     def _load_tokens_from_env() -> list[str]:
@@ -111,6 +108,7 @@ class ESMExtractor(EmbeddingExtractor):
         """
 
         if self._token_idx + 1 >= len(self._tokens):
+            print("All Forge API tokens exhausted, no further tokens available to rotate to.")
             return False
 
         self._token_idx += 1
@@ -121,6 +119,8 @@ class ESMExtractor(EmbeddingExtractor):
             self._token_idx + 1,
             len(self._tokens)
         )
+        
+        print(f"Rotated to Forge API token {self._token_idx + 1}/{len(self._tokens)} after the previous one stopped working.")
 
         return True
 
