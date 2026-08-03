@@ -1,5 +1,6 @@
 #Logging is an import that allows us to log messages in our code. It is a built-in module in Python that provides a flexible framework for emitting log messages from Python programs. We can use it to track events that happen when some software runs, which can be helpful for debugging and monitoring the software's behavior.
 import logging
+import time
 
 #ABC or abstract base class is a module that allows us to define base classes that cannot be instantiated but define a structure for derived classes.
 from abc import ABC, abstractmethod
@@ -124,7 +125,7 @@ class EmbeddingExtractor(ABC):
     
         
         
-    def extract_batch(self, uniprot_ids: list[str]) -> Tensor:
+    def extract_batch(self, uniprot_ids: list[str], flush_interval: int = 300) -> Tensor:
         """
         Method - Extract Batch:
         
@@ -141,13 +142,27 @@ class EmbeddingExtractor(ABC):
         
         #Extract embeddings for each UniProt ID in the list and stack them into a single Tensor. Cast to float32 here (rather than in each extractor) so every modality is stored at a consistent precision regardless of what dtype its underlying model natively returns (e.g. Forge returns bfloat16).
         embeddings = []
+        pending_embeddings , pending_ids = [], []
+        last_flush = time.monotonic()
         for i, uniprot_id in enumerate(uniprot_ids):
             try:
                 embedding = self.extract(uniprot_id).float()
             except Exception as e:
                 raise RuntimeError(f"Failed to extract embedding for UniProt ID: {uniprot_id} number {i}") from e
-            self.save(embedding.unsqueeze(0), [uniprot_id], self.save_dir)
+            
             embeddings.append(embedding)
+            
+            pending_embeddings.append(embedding)
+            pending_ids.append(uniprot_id)
+            
+            if time.monotonic() - last_flush > flush_interval:
+                self.save(torch.stack(pending_embeddings, dim=0), pending_ids, self.save_dir)
+                pending_embeddings, pending_ids = [], []
+                last_flush = time.monotonic()
+                
+        if pending_embeddings:
+            self.save(torch.stack(pending_embeddings, dim=0), pending_ids, self.save_dir)
+                    
         return torch.stack(embeddings, dim=0)
     
     def fetch_sequence(self, uniprot_id: str) -> str:

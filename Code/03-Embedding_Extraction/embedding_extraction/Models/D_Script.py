@@ -4,7 +4,7 @@ import os
 import h5py
 import torch
 from configs import ExtractorConfig
-from dscript.language_model import lm_embed
+from dscript.alphabet import Uniprot21
 from dscript.pretrained import get_pretrained
 from torch import Tensor
 
@@ -36,6 +36,11 @@ class DScriptExtractor(EmbeddingExtractor):
         #Initalise the base class
         super().__init__()
         
+        self.lm_model = get_pretrained("lm_v1")
+        if self.device == "cuda":
+            self.lm_model = self.lm_model.cuda()
+        self.lm_model.eval()
+               
         if mode == "extract":
             #We check for the fidelity of the panel embeddings in this function
             self.extract_panel_embeddings()
@@ -114,6 +119,27 @@ class DScriptExtractor(EmbeddingExtractor):
 
         return df[(lengths <= 2000) & (lengths > 0)]
     
+    def _lm_embed(self, sequence: str) -> Tensor:
+        """
+        Method - _lm_embed:
+
+        Embeds a given amino acid sequence using the language model (LM) component of the D_Script model.
+
+        Args:
+        - sequence: A string representing the amino acid sequence to embed.
+
+        Returns:
+        - A Tensor containing the embedded representation of the sequence.
+        """
+        
+        alphabet = Uniprot21()
+        x = torch.from_numpy(alphabet.encode(sequence.encode("utf-8"))).long().unsqueeze(0)
+        
+        if self.device == "cuda":
+            x = x.cuda()
+        with torch.no_grad():
+            return self.lm_model.transform(x).cpu()
+    
     def _embed_sequence(self, sequence: str, label: str) -> Tensor:
         """
         Method - _embed_sequence:
@@ -129,7 +155,7 @@ class DScriptExtractor(EmbeddingExtractor):
         """
         
         #lm_embed always returns a CPU tensor internally regardless of use_cuda, so it must be moved to self.device explicitly to match the model and panel_embeddings.
-        sequence_embed = lm_embed(sequence, use_cuda=self.device == "cuda").to(self.device)
+        sequence_embed = self._lm_embed(sequence).to(self.device)
 
         with torch.no_grad():
             scores = [self.model(sequence_embed, panel_member) for panel_member in self.panel_embeddings]
@@ -194,7 +220,7 @@ class DScriptExtractor(EmbeddingExtractor):
                         f"Failed to fetch sequence for UniProt ID: {uniprot_id}"
                     ) from e
 
-                embedding = lm_embed(sequence, use_cuda=self.device == "cuda")
+                embedding = self._lm_embed(sequence)
 
                 h5f.create_dataset(uniprot_id, data=embedding.squeeze(0).cpu().numpy())
                 
