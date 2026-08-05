@@ -3,7 +3,7 @@ model:
   modalities: 
     esm2: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/extractors/esm-C.yaml'
   fusion: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/fusion_layers/concatenation.yaml'
-  mlp: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/classifiers/SimpleMLP.yaml'
+  mlp: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Configs/classifiers/SmallMLP.yaml'
 
 training:
   epochs: 200

@@ -49,6 +49,7 @@ class ExtractorConfig(BaseModel):
         return f"{base}/{self.model}.pt"
 
 class ClassifierConfig(BaseModel):
+    ID: str
     model: str
     activation_function: str
     hidden_dims: list[int]

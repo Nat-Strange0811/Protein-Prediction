@@ -1,4 +1,4 @@
-ID: SimpleMLP
+ID: SmallMLP
 model: SimpleMLP
 activation_function: relu
-hidden_dims: [128, 64]
+hidden_dims: [64]

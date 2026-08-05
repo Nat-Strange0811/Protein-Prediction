@@ -1,6 +1,7 @@
 Logs/
 Environment/
 Data/
+Results/
 .log
 *.egg-info/
 *.env
