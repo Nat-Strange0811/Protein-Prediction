@@ -31,10 +31,11 @@ passing through the defined layers.
 class SimpleMLP(MLPClassifier):
     
     # Initialize the SimpleMLP model with specified parameters and activates the build method to construct the architecture
-    def __init__(self, input_dim, config: ClassifierConfig):
+    def __init__(self, input_dim, dropout_rate, config: ClassifierConfig):
         super().__init__()
+        self.ID = "SimpleMLP"
         self.input_dim = input_dim
-        self.dropout_rate = config.dropout_rate
+        self.dropout_rate = dropout_rate
         self.activation_function = self.resolve_activation_function(config.activation_function)
         self.hidden_dims = config.hidden_dims
         self.build()

@@ -33,6 +33,7 @@ class ConcatenationFusion(FusionLayer):
         # Store the model dimension and number of modalities for later use
         self.d_model = d_model
         self.n_modalities = n_modalities
+        self.ID = "ConcatenationFusion"
     
     def forward(self, embeddings: list[torch.Tensor]) -> torch.Tensor:
         return torch.cat(embeddings, dim=1)

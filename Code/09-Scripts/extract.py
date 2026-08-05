@@ -7,7 +7,7 @@ from configs import ExtractorConfig
 from embedding_extraction import ESMExtractor, DScriptExtractor
 
 
-def cached_prot_ids_current(cache_path : str, raw_csv : str) -> bool:
+def cached_prot_ids_current(cache_path : str, raw_csv : str, exact: bool = False) -> bool:
     """
     Check whether a cached embeddings/labels file (anything saved with a 'prot_ids' key)
     still matches the current raw_csv's Uni_Prot_ID set.
@@ -22,6 +22,8 @@ def cached_prot_ids_current(cache_path : str, raw_csv : str) -> bool:
 
     current_ids = set(pd.read_csv(raw_csv)["Uni_Prot_ID"])
     cached_ids = set(torch.load(cache_path, weights_only=True)["prot_ids"])
+    if exact:
+        return current_ids == cached_ids
     return current_ids.issubset(cached_ids)
 
 

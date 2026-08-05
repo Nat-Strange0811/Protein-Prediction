@@ -91,6 +91,8 @@ class ProteinDataset(Dataset):
         
         # Store labels
         self.labels = label_data['labels']
+        
+        self.ID = f"ProteinDataset_{'_'.join(self.modalities)}"
     
     #__len__ function returns the number of samples in the dataset
     def __len__(self):

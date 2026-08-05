@@ -4,7 +4,7 @@ import os
 import h5py
 import torch
 from configs import ExtractorConfig
-from dscript.alphabet import Uniprot21
+from dscript.alphabets import Uniprot21
 from dscript.pretrained import get_pretrained
 from torch import Tensor
 
@@ -53,6 +53,8 @@ class DScriptExtractor(EmbeddingExtractor):
 
             self._embedding_dim = len(self.panel_embeddings)
             self.model.to(self.device)
+            
+        self.ID = f"D_Script_{self.model_name}_panel_{self.panel}"
 
         
     @property

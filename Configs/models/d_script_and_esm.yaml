@@ -11,13 +11,21 @@ training:
   epochs: 200
   batch_size: 32
   patience: 20
-  
+  dropout_rate: 0.1
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  seed: 42
+  learning_rate_range: [0.0001, 0.1]
+  weight_decay_range: [0.00001, 0.01]
+  dropout_rate_range: [0.0, 0.5]
+
 paths:
   embedding_dir: 'Data/Embeddings/'
   labels_path: 'Data/Labels/labels.pt'
   checkpoint_dir: 'Logs/Checkpoints/'
   raw_csv: '/data/PHURI-Langenberg/people/Nat/Protein-Prediction/Data/NN_input/true_positives_and_true_negatives.csv'
-
+  results_path: 'Results/d_script_and_esm.csv'
+  
 uni_prot:
   backoff_factor: 0.5
   retries: 3

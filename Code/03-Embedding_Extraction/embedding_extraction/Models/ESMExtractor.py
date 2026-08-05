@@ -65,6 +65,8 @@ class ESMExtractor(EmbeddingExtractor):
         if mode == "extract":
             #Our client which enables us to interact with the Forge API, initialised with the first available token.
             self._client = self._build_client(self._tokens[self._token_idx])
+            
+        self.ID = f"ESMExtractor_{self.model_name}"
 
     @staticmethod
     def _load_tokens_from_env() -> list[str]:

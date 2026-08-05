@@ -148,6 +148,8 @@ class EmbeddingExtractor(ABC):
             try:
                 embedding = self.extract(uniprot_id).float()
             except Exception as e:
+                if pending_embeddings:
+                    self.save(torch.stack(pending_embeddings, dim=0), pending_ids, self.save_dir)
                 raise RuntimeError(f"Failed to extract embedding for UniProt ID: {uniprot_id} number {i}") from e
             
             embeddings.append(embedding)

@@ -1,4 +1,9 @@
 #!/bin/bash
+#SBATCH -A pilot_sae_gpu
+#SBATCH -p sae
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1  
 #SBATCH --job-name=Protein_Prediction
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
@@ -11,4 +16,4 @@ echo "Starting Job: $SLURM_JOB_NAME with Job ID: $SLURM_JOB_ID"
 module load miniforge
 mamba activate protein_prediction
 
-python Code/09-Scripts/train.py --config Configs/models/d_script_and_esm.yaml
+python -u Code/09-Scripts/train.py --config Configs/models/baseline.yaml

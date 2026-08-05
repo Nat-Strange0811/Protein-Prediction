@@ -16,12 +16,20 @@ class PathsConfig(BaseModel):
     labels_path: str
     checkpoint_dir: str
     raw_csv: str
+    results_path: str
     
 class TrainingConfig(BaseModel):
     batch_size: int
     epochs: int
     patience: int
-    
+    dropout_rate: float
+    learning_rate: float
+    weight_decay: float
+    seed: int
+    learning_rate_range: list[float]
+    weight_decay_range: list[float]
+    dropout_rate_range: list[float]
+
 class Config(BaseModel):
     model: ModelConfig
     paths: PathsConfig
@@ -42,7 +50,6 @@ class ExtractorConfig(BaseModel):
 
 class ClassifierConfig(BaseModel):
     model: str
-    dropout_rate: float
     activation_function: str
     hidden_dims: list[int]
 

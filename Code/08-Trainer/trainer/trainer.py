@@ -51,13 +51,14 @@ class Trainer:
         self.patience = config.training.patience
         self.checkpoint_dir = Path(config.paths.checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.ID = f"{self.model.ID}-{dataset.ID}-Trainer_{config.training.seed}_{config.training.learning_rate}_{config.training.weight_decay}_{config.training.dropout_rate}"
         
         # Split dataset
         n = len(dataset)
         n_train = int(0.7 * n)
         n_val = int(0.15 * n)
         n_test = n - n_train - n_val
-        train_set, val_set, test_set = random_split(dataset, [n_train, n_val, n_test])
+        train_set, val_set, test_set = random_split(dataset, [n_train, n_val, n_test], generator=torch.Generator().manual_seed(config.training.seed))
         
         # Create DataLoaders for training, validation, and testing
         self.train_loader = DataLoader(train_set, batch_size=config.training.batch_size, shuffle=True)
@@ -66,7 +67,8 @@ class Trainer:
         
         # Define the loss criterion and optimizer for training
         self.criterion = nn.BCELoss()
-        self.optimiser = torch.optim.AdamW(model.parameters())
+        self.optimiser = torch.optim.AdamW(model.parameters(), lr=config.training.learning_rate, weight_decay=config.training.weight_decay)
+        
     '''
     Method - _run_epoch:
     
@@ -143,6 +145,8 @@ class Trainer:
     def train(self, epochs: int):
         # Initialize variables to track the best validation AUC and the patience counter for early stopping
         best_auc = 0
+        best_acc = 0
+        best_train_auc = 0
         patience_counter = 0
         
         # Loop through the specified number of epochs to train the model
@@ -161,19 +165,29 @@ class Trainer:
             # Check if the validation AUC has improved; if so, save the model checkpoint and reset the patience counter. If not, increment
             if val_auc > best_auc:
                 best_auc = val_auc
+                best_acc = val_acc
+                best_train_auc = train_auc
                 patience_counter = 0
-                torch.save(self.model.state_dict(), self.checkpoint_dir / 'best_model.pt')
+                torch.save(self.model.state_dict(), self.checkpoint_dir / f'best_model_{self.ID}.pt')
             else:
                 patience_counter += 1
                 if patience_counter >= self.patience:
                     print(f"Early stopping triggered at epoch {epoch+1}")
                     break
+                
+        self.results = {
+            "best_auc": best_auc,
+            "best_acc": best_acc,
+            "best_epoch": epoch + 1 - patience_counter,
+            "train_auc": best_train_auc
+        }
     
     #Runs evaluation on the test set using the best model checkpoint and returns the test loss, AUC, and accuracy.
     def evaluate(self):
         self.model.load_state_dict(torch.load(
-            self.checkpoint_dir / 'best_model.pt', weights_only=True
+            self.checkpoint_dir / f'best_model_{self.ID}.pt', weights_only=True
         ))
         test_loss, test_auc, test_acc = self._run_epoch(self.test_loader, train=False)
         print(f"Test Loss: {test_loss:.4f} AUC: {test_auc:.4f} Acc: {test_acc:.1f}%")
+        
         return test_loss, test_auc, test_acc
