@@ -11,7 +11,7 @@ from dataset import ProteinDataset
 from fusion_model import FusionModel
 
 # sklearn imports
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader, random_split
 
 '''
@@ -69,6 +69,16 @@ class Trainer:
         self.criterion = nn.BCELoss()
         self.optimiser = torch.optim.AdamW(model.parameters(), lr=config.training.learning_rate, weight_decay=config.training.weight_decay)
         
+        self.val_threshold = 0.5  # Initialize the validation threshold to 0.5
+        self.threshold = 0.5  # Initialize the threshold to 0.5
+    
+    def _optimal_threshold(self, labels, preds):
+        #Youden's J statistic to find the optimal threshold for binary classification based on the ROC curve
+        fpr, tpr, thresholds = roc_curve(labels, preds)
+        optimal_idx = (tpr - fpr).argmax()
+        optimal_threshold = thresholds[optimal_idx]
+        return optimal_threshold
+        
     '''
     Method - _run_epoch:
     
@@ -86,7 +96,7 @@ class Trainer:
     Raises:
     - None
     '''
-    def _run_epoch(self, loader, train: bool) -> tuple[float, float, float]:
+    def _run_epoch(self, loader, train: bool, threshold: float | None = None) -> tuple[float, float, float, float]:
         # Set the model to training or evaluation mode based on the 'train' parameter
         self.model.train() if train else self.model.eval()
         # Initialise total loss and lists to store predictions and labels for AUC and accuracy calculation
@@ -120,12 +130,16 @@ class Trainer:
         # Calculate average loss, AUC, and accuracy for the epoch
         avg_loss = total_loss / len(loader)
         auc = roc_auc_score(all_labels, all_preds)
+        
+        if threshold is None:
+            threshold = self._optimal_threshold(all_labels, all_preds)
+        
         accuracy = sum(
-            (p >= 0.5) == l 
+            (p >= threshold) == l 
             for p, l in zip(all_preds, all_labels)
         ) / len(all_labels) * 100
         
-        return avg_loss, auc, accuracy
+        return avg_loss, auc, accuracy, threshold
     
     '''
     Method - train: 
@@ -152,8 +166,9 @@ class Trainer:
         # Loop through the specified number of epochs to train the model
         for epoch in range(epochs):
             # Run a training epoch and a validation epoch, and get the average loss, AUC, and accuracy for both
-            train_loss, train_auc, train_acc = self._run_epoch(self.train_loader, train=True)
-            val_loss, val_auc, val_acc = self._run_epoch(self.val_loader, train=False)
+            train_loss, train_auc, train_acc, _ = self._run_epoch(self.train_loader, train=True, threshold=self.val_threshold)
+            val_loss, val_auc, val_acc, val_threshold = self._run_epoch(self.val_loader, train=False, threshold=None)
+            self.val_threshold = val_threshold  # Store the optimal threshold for validation
             
             # Print the training and validation metrics for the current epoch
             print(
@@ -166,6 +181,7 @@ class Trainer:
             if val_auc > best_auc:
                 best_auc = val_auc
                 best_acc = val_acc
+                self.threshold = val_threshold
                 best_train_auc = train_auc
                 patience_counter = 0
                 torch.save(self.model.state_dict(), self.checkpoint_dir / f'best_model_{self.ID}.pt')
@@ -187,7 +203,7 @@ class Trainer:
         self.model.load_state_dict(torch.load(
             self.checkpoint_dir / f'best_model_{self.ID}.pt', weights_only=True
         ))
-        test_loss, test_auc, test_acc = self._run_epoch(self.test_loader, train=False)
+        test_loss, test_auc, test_acc, _ = self._run_epoch(self.test_loader, train=False, threshold=self.threshold)
         print(f"Test Loss: {test_loss:.4f} AUC: {test_auc:.4f} Acc: {test_acc:.1f}%")
         
         return test_loss, test_auc, test_acc
